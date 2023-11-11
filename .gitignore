@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Object files
+*.o
+
+# Binary
+crc32
