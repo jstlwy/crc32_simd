@@ -1,4 +1,4 @@
-# crc_simd
+# crc32_simd
 An exercise in using SIMD instructions to perform 32-bit CRCs.
 
 ## Requirements
