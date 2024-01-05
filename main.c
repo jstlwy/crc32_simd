@@ -29,6 +29,8 @@
 # ifdef __AVX512__
 #define NUM_U32_PER_M512 (sizeof(__mm512i) / sizeof(uint32_t))
 # endif
+#else
+#error SIMD support required.
 #endif
 
 #define NUM_INT8       (UINT8_MAX + 1)
@@ -97,6 +99,8 @@ void makeCrc32TableSimd(uint32_t table[const static NUM_INT8])
         vst1q_u32(table + i, c_vec);
         n_vec = vaddq_u32(n_vec, inc_vec);
     }
+#else
+#error SIMD support required.
 #endif
 }
 
@@ -149,6 +153,8 @@ uint32_t calculateCrc32Simd(const size_t bufLen, const uint8_t buffer[const bufL
         CRC32B(crc32, buffer[i]);
 #elif defined(__ARM_FEATURE_CRC32)
         crc32 = __crc32cb(crc32, buffer[i]);
+#else
+#error SIMD support required.
 #endif
     }
     return ~crc32;
