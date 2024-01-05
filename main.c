@@ -4,12 +4,10 @@
 #include <string.h>
 #include <time.h>
 
-#if __aarch64__
-
+#ifdef __ARM_NEON__
 #include <arm_neon.h>
 #define NUM_U32_PER_REG (sizeof(uint32x4_t) / sizeof(uint32_t))
-
-# if __APPLE__
+# ifdef __APPLE__
 // This solution obtained from:
 // http://main.lv/writeup/arm64_assembly_crc32.md
 #define CRC32X(crc, value) __asm__("crc32x %w[c], %w[c], %x[v]":[c]"+r"(crc):[v]"r"(value))
@@ -24,14 +22,13 @@
 # else
 #define CRC_32_POLY 0x04C11DB7
 # endif
-
-#elif __amd64__
-
+#elif defined(__SSE4_2__)
 #include <immintrin.h>
 #define CRC_32_POLY 0x1EDC6F41
-#define NUM_U32_PER_M512 (sizeof(__mm512i) / sizeof(uint32_t))
 #define NUM_U32_PER_M128 (sizeof(__mm128i) / sizeof(uint32_t))
-
+# ifdef __AVX512__
+#define NUM_U32_PER_M512 (sizeof(__mm512i) / sizeof(uint32_t))
+# endif
 #endif
 
 #define NUM_INT8       (UINT8_MAX + 1)
@@ -42,12 +39,12 @@ uint32_t crc32Table[NUM_INT8];
 
 void makeCrc32TableSimd(uint32_t table[const static NUM_INT8])
 {
-#if __AVX512F__
+#ifdef __AVX512F__
     const __m512i poly_vec = _mm512_set1_epi32(CRC_32_POLY);
     const __m512i one_vec = _mm512_set1_epi32(0x00000001);
     const __m512i inc_vec = _mm512_set1_epi32(NUM_U32_PER_M512);
     __m512i n_vec = _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
-    for (uint32_t i = 0; i < NUM_INT8; i += NUM_U32_PER_M512) {
+    for (uint32_t i = 0; (i + NUM_U32_PER_M512) <= NUM_INT8; i += NUM_U32_PER_M512) {
         __m512i c_vec = n_vec;
         for (int b = 0; b < BYTE_BIT_WIDTH; b++) {
             const __m512i csr_vec = _mm512_srli_epi32(c_vec, 1);
@@ -58,13 +55,13 @@ void makeCrc32TableSimd(uint32_t table[const static NUM_INT8])
         _mm512_storeu_epi32(table + i, c_vec);
         n_vec = _mm512_add_epi32(n_vec, inc_vec);
     }
-#elif __SSE4_2__
+#elif defined(__SSE4_2__)
     const __m128i poly_vec = _mm_set1_epi32(CRC_32_POLY);
     const __m128i one_vec = _mm_set1_epi32(0x00000001);
     const __m128i all_vec = _mm_set1_epi32(0xFFFFFFFF);
     const __m128i inc_vec = _mm_set1_epi32(NUM_U32_PER_M128);
     __m128i n_vec = _mm_set_epi32(3, 2, 1, 0);
-    for (uint32_t i = 0; i < NUM_INT8; i += NUM_U32_PER_M128) {
+    for (uint32_t i = 0; (i + NUM_U32_PER_M128) <= NUM_INT8; i += NUM_U32_PER_M128) {
         __m128i c_vec = n_vec;
         for (int b = 0; b < BYTE_BIT_WIDTH; b++) {
             const __m128i csr_vec = _mm_srli_epi32(c_vec, 1);
@@ -79,13 +76,13 @@ void makeCrc32TableSimd(uint32_t table[const static NUM_INT8])
         _mm_storeu_si128((__m128i*)(table + i), c_vec);
         n_vec = _mm_add_epi32(n_vec, inc_vec);
     }
-#elif __aarch64__
+#elif defined(__ARM_NEON__)
     const uint32x4_t poly_vec = vdupq_n_u32(CRC_32_POLY);
     const uint32x4_t one_vec = vdupq_n_u32(0x00000001);
     const uint32x4_t inc_vec = vdupq_n_u32(NUM_U32_PER_REG);
     static const uint32_t nVecStartValues[NUM_U32_PER_REG] = {0, 1, 2, 3};
     uint32x4_t n_vec = vld1q_u32(nVecStartValues);
-    for (uint32_t i = 0; i < NUM_INT8; i += NUM_U32_PER_REG) {
+    for (uint32_t i = 0; (i + NUM_U32_PER_REG) <= NUM_INT8; i += NUM_U32_PER_REG) {
         uint32x4_t c_vec = n_vec;
         for (int b = 0; b < BYTE_BIT_WIDTH; b++) {
             const uint32x4_t csr_vec = vshrq_n_u32(c_vec, 1);
@@ -146,11 +143,11 @@ uint32_t calculateCrc32Simd(const size_t bufLen, const uint8_t buffer[const bufL
 {
     uint32_t crc32 = UINT32_MAX;
     for (size_t i = 0; i < bufLen; i++) {
-#if __SSE4_2__
+#ifdef __SSE4_2__
         crc32 = _mm_crc32_u8(crc32, buffer[i]);
-#elif __APPLE__
+#elif defined(__APPLE__)
         CRC32B(crc32, buffer[i]);
-#elif __ARM_FEATURE_CRC32
+#elif defined(__ARM_FEATURE_CRC32)
         crc32 = __crc32cb(crc32, buffer[i]);
 #endif
     }
@@ -213,3 +210,4 @@ int main(int argc, char* argv[])
 
     return 0;
 }
+
